@@ -30,3 +30,6 @@ O valor contratado em uma obra e o custo previsto do ajudante **não criam autom
 
 ## Observações
 Versão inicial de gestão, sem integração bancária, emissão fiscal, automação do WhatsApp, multiusuários com permissões ou anexo de fotos. Faça backup periódico do arquivo no volume `/data/fortegesso.db`, preferencialmente com o serviço parado ou usando backup SQLite consistente.
+
+## Atualização visual Mobile 2.0
+Esta versão redesenha a navegação do celular com barra inferior de cinco atalhos, menu lateral com demais módulos, cartões responsivos para tabelas, formulário otimizado para toque e ações rápidas na página inicial. A lógica de armazenamento e as rotas da API são preservadas. Para atualizar, substitua os arquivos do repositório e faça redeploy, mantendo o mesmo volume `/data`. Não exclua o volume persistente.
