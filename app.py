@@ -18,6 +18,7 @@ def init():
     os.makedirs(os.path.dirname(os.path.abspath(DB)),exist_ok=True)
     with conn() as c:
         c.executescript('''
+        CREATE TABLE IF NOT EXISTS bank_opening(id INTEGER PRIMARY KEY CHECK(id=1),amount REAL NOT NULL DEFAULT 0,start_date TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE NOT NULL,password TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS clients(id INTEGER PRIMARY KEY,name TEXT NOT NULL,phone TEXT DEFAULT '',address TEXT DEFAULT '',notes TEXT DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,title TEXT NOT NULL,description TEXT DEFAULT '',job_date TEXT DEFAULT '',status TEXT DEFAULT 'agendado',price REAL DEFAULT 0,helper TEXT DEFAULT '',helper_cost REAL DEFAULT 0,notes TEXT DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -133,6 +134,21 @@ def item(table,ident):
         return jsonify(ok=True)
     except (ValueError,sqlite3.IntegrityError) as e:return jsonify(error=str(e)),400
 
+@app.route('/api/opening-balance',methods=['GET','PUT'])
+@logged
+def opening_balance():
+    if request.method=='GET':
+        return jsonify(one('SELECT amount,start_date FROM bank_opening WHERE id=1') or {'amount':0,'start_date':date.today().isoformat(),'configured':False})
+    try:
+        d=request.get_json(force=True)
+        amount=numeric(d.get('amount'))
+        start=str(d.get('start_date',''))
+        date.fromisoformat(start)
+        with conn() as c:
+            c.execute('INSERT INTO bank_opening(id,amount,start_date) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET amount=excluded.amount,start_date=excluded.start_date,updated_at=CURRENT_TIMESTAMP',(amount,start))
+        return jsonify(ok=True)
+    except (ValueError,TypeError):return jsonify(error='Informe um valor e uma data válidos.'),400
+
 @app.route('/api/summary')
 @logged
 def summary():
@@ -149,7 +165,12 @@ def summary():
         elif m['kind']=='receita':to_receive+=m['amount']
         else:to_pay+=m['amount']
     all_pending=rows('SELECT kind,amount FROM movements WHERE status="pendente"')
-    return jsonify(month=month,totals=totals,received=received,spent=spent,profit=round(received-spent,2),to_receive=round(sum(x['amount'] for x in all_pending if x['kind']=='receita'),2),to_pay=round(sum(x['amount'] for x in all_pending if x['kind']!='receita'),2),month_to_receive=to_receive,month_to_pay=to_pay,active_jobs=one('SELECT count(*) AS n FROM jobs WHERE status IN ("agendado","andamento")')['n'],client_count=one('SELECT count(*) AS n FROM clients')['n'])
+    opening=one('SELECT amount,start_date FROM bank_opening WHERE id=1')
+    opening_amount=opening['amount'] if opening else 0
+    start=opening['start_date'] if opening else '0000-01-01'
+    bank_entries=rows('SELECT kind,amount FROM movements WHERE status="pago" AND paid_date>=? AND paid_date<=?',(start,date.today().isoformat()))
+    bank_balance=round(opening_amount+sum(x['amount'] if x['kind']=='receita' else -x['amount'] for x in bank_entries),2)
+    return jsonify(bank_balance=bank_balance,opening_amount=opening_amount,opening_date=start,month=month,totals=totals,received=received,spent=spent,profit=round(received-spent,2),to_receive=round(sum(x['amount'] for x in all_pending if x['kind']=='receita'),2),to_pay=round(sum(x['amount'] for x in all_pending if x['kind']!='receita'),2),month_to_receive=to_receive,month_to_pay=to_pay,active_jobs=one('SELECT count(*) AS n FROM jobs WHERE status IN ("agendado","andamento")')['n'],client_count=one('SELECT count(*) AS n FROM clients')['n'])
 
 @app.route('/api/export')
 @logged
